@@ -1,11 +1,13 @@
 # Instalar e carregar os pacotes necessários
-install.packages(c("dplyr", "ggplot2", "caret", "corrplot", "randomForest"))
+install.packages(c("dplyr", "ggplot2", "caret", "corrplot", "randomForest", "glmnet"))
 
 library(dplyr)
 library(ggplot2)
 library(caret)
 library(corrplot)
 library(randomForest)
+library(glmnet)
+
 
 # Carregar o dataset
 car_data <- read.csv("/home/ianalmeida/Meu RCurso/Meu RCurso/archive/CAR DETAILS FROM CAR DEKHO.csv", stringsAsFactors = FALSE)
@@ -73,3 +75,30 @@ varImpPlot(model_rf, main = "Importância das Variáveis")
 # Salvar o modelo e os dados processados
 saveRDS(model_lm, "modelo_regressao_linear.rds")
 write.csv(car_data, "car_data_processed.csv", row.names = FALSE)
+
+
+#library(glmnet)
+
+# Converter fatores em variáveis dummy (exigido pelo glmnet)
+dummies <- dummyVars(~ fuel + seller_type + transmission + owner, data = car_data)
+car_encoded <- predict(dummies, newdata = car_data) %>% 
+  as.data.frame() %>% 
+  bind_cols(car_data %>% select(-c(fuel, seller_type, transmission, owner)))
+
+# Separar dados
+set.seed(123)
+train_index <- sample(1:nrow(car_encoded), 0.8 * nrow(car_encoded))
+train <- car_encoded[train_index, ]
+test <- car_encoded[-train_index, ]
+
+# Treinar modelo Lasso
+x <- as.matrix(train %>% select(-selling_price))
+y <- train$selling_price
+
+lasso_model <- cv.glmnet(x, y, alpha = 1)  # alpha=1 para Lasso
+plot(lasso_model)
+
+# Previsões
+predictions <- predict(lasso_model, newx = as.matrix(test %>% select(-selling_price)))
+rmse <- sqrt(mean((test$selling_price - predictions)^2))
+cat("RMSE (Lasso):", rmse)
